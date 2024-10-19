@@ -6,7 +6,9 @@
 </script>
 
 <div class="w-full h-screen">
-  <Canvas>
+  <Canvas rendererParameters={{
+    preserveDrawingBuffer: true
+  }}>
     <World>
       <Debug />
       <Scene />

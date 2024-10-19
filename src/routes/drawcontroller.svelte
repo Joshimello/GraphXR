@@ -1,22 +1,26 @@
 <script lang="ts">
   import * as THREE from 'three'
-  import { T, useTask } from '@threlte/core'
-  import { Text, HTML } from '@threlte/extras'
+  import { T, useTask, useThrelte } from '@threlte/core'
+  import { Text } from '@threlte/extras'
   import { Controller, type XRControllerEvent, useController, pointerControls } from '@threlte/xr'
   import { text } from './stores'
+  import { MeshLineGeometry, MeshLineMaterial, raycast } from 'meshline'
 
   let isDrawing = false
   let points: THREE.Vector3[] = []
   let meshes: THREE.Mesh[] = []
   let line: THREE.Line | null = null
 
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 })
+  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff })
   let lineGeometry = new THREE.BufferGeometry()
+
+  const { scene, renderer, camera } = useThrelte()
 
   pointerControls('right')
 
   const handleStart = (event: XRControllerEvent) => {
     isDrawing = true
+
     points = []
     lineGeometry = new THREE.BufferGeometry()
     const positions = new Float32Array(0)
@@ -28,17 +32,31 @@
     isDrawing = false
 
     const curve = new THREE.CatmullRomCurve3(points)
-    const tubeGeometry = new THREE.TubeGeometry(curve, 32, 0.005, 32, false)
-    const tubeMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 })
-    const tube = new THREE.Mesh(tubeGeometry, tubeMaterial)
+    const geometry = new MeshLineGeometry()
+    geometry.setPoints(curve.getPoints(50))
+    const material = new MeshLineMaterial({ color: 0xffffff, lineWidth: 0.001, resolution: new THREE.Vector2(100, 100) })
+    const meshLine = new THREE.Mesh(geometry, material)
+    meshes = [...meshes, meshLine]
 
-    meshes = [...meshes, tube]
     line = null
     points = []
   }
 
   const handleSqueezeStart = (event: XRControllerEvent) => {
-    meshes = []
+    const renderCanvas = renderer.domElement
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    canvas.width = renderCanvas.width
+    canvas.height = renderCanvas.height
+
+    renderer.render(scene, camera.current)
+    context?.drawImage(renderCanvas, 0, 0, canvas.width, canvas.height)
+
+    const data = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = data
+    a.download = 'drawing.png'
+    a.click()
   }
 
   const handleSqueezeEnd = (event: XRControllerEvent) => {
@@ -78,6 +96,15 @@
   <T.Group slot="target-ray">
     <Text text={$text} anchorX="right" fontSize={0.02} rotation={[-Math.PI/2, 0, -Math.PI/2]} position={[-0.005, 0, 0.16]} />
   </T.Group>
+
+  <T.Mesh slot="pointer-ray" position={[0, -0.001, 0]}>
+    <T.SphereGeometry args={[0.002, 32, 32]} />
+    <T.MeshStandardMaterial color={0xffffff} />
+  </T.Mesh>
+
+  <T.Mesh slot="pointer-cursor">
+
+  </T.Mesh>
 
 </Controller>
 

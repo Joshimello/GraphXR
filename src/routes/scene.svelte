@@ -9,7 +9,6 @@
 </script>
 
 <XR>
-  <Menucontroller left />
   <DrawController right />
 </XR>
 
