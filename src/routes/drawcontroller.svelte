@@ -2,9 +2,9 @@
   import * as THREE from 'three'
   import { T, useTask } from '@threlte/core'
   import { Text, HTML } from '@threlte/extras'
-  import { Controller, type XRControllerEvent, useController } from '@threlte/xr'
+  import { Controller, type XRControllerEvent, useController, pointerControls } from '@threlte/xr'
+  import { text } from './stores'
 
-  let text = ''
   let isDrawing = false
   let points: THREE.Vector3[] = []
   let meshes: THREE.Mesh[] = []
@@ -12,6 +12,8 @@
 
   const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 })
   let lineGeometry = new THREE.BufferGeometry()
+
+  pointerControls('right')
 
   const handleStart = (event: XRControllerEvent) => {
     isDrawing = true
@@ -74,7 +76,7 @@
   on:squeezeend={handleSqueezeEnd}
 >
   <T.Group slot="target-ray">
-    <Text text={"hi"} />
+    <Text text={$text} anchorX="right" fontSize={0.02} rotation={[-Math.PI/2, 0, -Math.PI/2]} position={[-0.005, 0, 0.16]} />
   </T.Group>
 
 </Controller>
