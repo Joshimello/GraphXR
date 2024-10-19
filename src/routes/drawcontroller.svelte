@@ -6,6 +6,8 @@
   import { text } from './stores'
   import { MeshLineGeometry, MeshLineMaterial, raycast } from 'meshline'
 	import { onMount } from 'svelte';
+  import { ComputeEngine } from "@cortex-js/compute-engine";
+
 
   let isDrawing = false
   let points: THREE.Vector3[] = []
@@ -51,6 +53,29 @@
     const size = renderer.getSize(new THREE.Vector2())
     renderTarget = new THREE.WebGLRenderTarget(size.width, size.height)
   })
+
+  async function sendData(data:any) {
+      console.log("Sending Data ...")
+      const url = "https://192.168.0.138:5000/receive-data"; // Flask server endpoint
+      try {
+        const response = await fetch(url, {
+          method: "POST", // Use the POST method to send data
+          headers: {
+            "Content-Type": "application/json" // Specify the content type as JSON
+          },
+          body: JSON.stringify({image:data}) // Send the data as a JSON string
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+
+        const json = await response.json(); // Parse the JSON response from the server
+        console.log("Response from server:", json);
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
 
   const handleSqueezeStart = (event: XRControllerEvent) => {
     // const offscreenCanvas = document.createElement('canvas');
@@ -119,7 +144,7 @@
     a.href = url;
     a.download = 'drawing.png';
     a.click();
-
+    sendData(url)
   }
 
   const handleSqueezeEnd = (event: XRControllerEvent) => {
@@ -145,6 +170,174 @@
       lineGeometry.attributes.position.needsUpdate = true
     }
   })
+
+  /* GRAPHING */
+  const vertexShader = `
+    varying float vX;  
+    varying float vY;  
+    varying float vZ;  
+
+    void main() {
+        vec4 modelPosition = vec4(position, 1.0);  // Use model local coordinates
+        vZ = modelPosition.z;
+        vX = modelPosition.x;
+        vY = modelPosition.y;
+        gl_Position = projectionMatrix * modelViewMatrix * modelPosition;
+    }
+    `;
+
+    const fragmentShader = `
+    varying float vX;  
+    varying float vY;  
+    varying float vZ;  
+    uniform bool useRed;
+    uniform bool useGreen;
+    uniform bool useBlue;
+    uniform float initRed;
+    uniform float initGreen;
+    uniform float initBlue;
+
+    uniform float maxZ;
+    uniform float minZ;
+
+    void main() {
+        float red = initRed;
+        float green = initGreen;
+        float blue = initBlue;
+
+        float interval = (maxZ - vY) / (maxZ - minZ);
+
+        if (interval < 0.5) {
+            red = 1.0 - 2.0 * interval; // Red fades out
+            green = 2.0 * interval;     // Green fades in
+            blue = 0.0;                 // Blue stays at 0
+        } else {
+            red = 0.0;                  // Red stays at 0
+            green = 2.0 * (1.0 - interval); // Green fades out
+            blue = 2.0 * (interval - 0.5);  // Blue fades in
+        }
+
+        gl_FragColor = vec4(red, green, blue, 1.0);
+
+        // if(vZ > 10.0 || vZ < -10.0){
+        //     gl_FragColor = vec4(1.0, 1.0, 1.0, 0.0);
+        // }
+        if(maxZ == minZ){
+            gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        }
+    }
+    `;
+
+    const ce = new ComputeEngine();
+    const size = 10;
+    const splitter = 64;
+    const offsetY = 0.5;
+
+    let formula = "";
+    
+    function createGraph() {
+
+      console.log("Creating Mesh ...");
+
+      const geometry = new THREE.PlaneGeometry(size, size, splitter, splitter);
+      const materialGrid = new THREE.MeshBasicMaterial({
+          color: 0x000000, // Hex code for black
+          wireframe: true,
+          opacity: 0.05,
+          transparent: true 
+      });                
+
+      var useRed:boolean = Math.random() < 0.5;
+      var useGreen:boolean = Math.random() < 0.5;
+      var useBlue:boolean = (useRed || useGreen) ? (Math.random() < 0.5) : true;
+
+      var maxZ = -Infinity;
+      var minZ = Infinity;
+
+      const material = new THREE.ShaderMaterial({
+          vertexShader,
+          fragmentShader,
+          side: THREE.DoubleSide,
+          transparent: true,
+          uniforms: {
+              maxZ: { value: 0 },
+              minZ: { value: 0 },
+              useRed: { value: useRed},
+              initRed: { value: useRed ? 0.2 : 0.8 },
+              useGreen: { value: useGreen },
+              initGreen: { value: useRed ? 0.2 : 0.8 },
+              useBlue: { value: useBlue },
+              initBlue: { value: useRed ? 0.2 : 0.8 },
+          },
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const mesh2 = new THREE.Mesh(geometry, materialGrid);
+        mesh.castShadow = true;  // This mesh casts shadows
+        mesh.receiveShadow = true; 
+
+        mesh.name = formula;
+        scene.add(mesh);
+
+        // scene.add(mesh2);
+
+        // Modify vertex positions
+        const positions = geometry.attributes.position;
+        const vertexCount = positions.count;
+        for (let i = 0; i < vertexCount; i++) {
+            const x = positions.getX(i);
+            const y = positions.getY(i);
+            ce.assign('x', x );
+            ce.assign('y', y );
+            const z = Number(ce.parse(formula).N().value);
+            positions.setXYZ(i, x, z, y);
+            // positions.setZ(i, z);
+
+            if (z > maxZ) {
+                maxZ = z;
+            }
+            if(z < minZ){
+                minZ = z;
+            }
+        }
+        // geometry.scale(1.0, 1.0, size/(maxZ * 2))
+        const scale = 0.3;
+        material.uniforms.maxZ.value =  maxZ * scale + offsetY;
+        material.uniforms.minZ.value =  minZ * scale + offsetY;
+        geometry.scale(scale,scale,scale)
+        geometry.translate(2, offsetY, 0);
+
+        positions.needsUpdate = true;
+
+        console.log("Finish Mesh ...");
+
+        return mesh;
+  }
+
+  function addGridHelper() {
+    const divisions = size;  // One line per unit
+    const gridHelper = new THREE.GridHelper(size * 0.3, divisions, 0x888888, 0x888888);
+    gridHelper.position.y = 0;  // Align it with the base of your mesh if needed
+    // gridHelper.rotateX(Math.PI / 2);
+    gridHelper.translateX(2);
+    gridHelper.translateY(offsetY);
+
+    scene.add(gridHelper);
+  }
+
+  addGridHelper();
+
+  // To set a new formula, do:
+  formula = "\\sin(x) * \\cos(y)";
+  console.log(formula);
+  var curMesh = createGraph();
+
+  function changeMesh(newFormula:string){
+    scene.remove(curMesh);
+    curMesh.geometry.dispose();
+    curMesh.material.dispose();
+    formula = newFormula;
+    curMesh = createGraph();
+  }
 
 </script>
 
