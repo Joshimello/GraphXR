@@ -2,13 +2,15 @@
   import * as THREE from 'three'
   import { T, useTask, useThrelte } from '@threlte/core'
   import { Text } from '@threlte/extras'
-  import { Controller, type XRControllerEvent, useController, pointerControls } from '@threlte/xr'
+  import { Controller, type XRControllerEvent, useController, pointerControls, useXR } from '@threlte/xr'
   import { text } from './stores'
   import { MeshLineGeometry, MeshLineMaterial, raycast } from 'meshline'
+	import { onMount } from 'svelte';
 
   let isDrawing = false
   let points: THREE.Vector3[] = []
   let meshes: THREE.Mesh[] = []
+  let strokes: THREE.Vector3[][] = []
   let line: THREE.Line | null = null
 
   const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff })
@@ -37,26 +39,87 @@
     const material = new MeshLineMaterial({ color: 0xffffff, lineWidth: 0.001, resolution: new THREE.Vector2(100, 100) })
     const meshLine = new THREE.Mesh(geometry, material)
     meshes = [...meshes, meshLine]
+    strokes = [...strokes, points]
 
     line = null
     points = []
   }
 
+  let renderTarget: THREE.WebGLRenderTarget
+
+  onMount(() => {
+    const size = renderer.getSize(new THREE.Vector2())
+    renderTarget = new THREE.WebGLRenderTarget(size.width, size.height)
+  })
+
   const handleSqueezeStart = (event: XRControllerEvent) => {
-    const renderCanvas = renderer.domElement
-    const canvas = document.createElement('canvas')
-    const context = canvas.getContext('2d')
-    canvas.width = renderCanvas.width
-    canvas.height = renderCanvas.height
+    // const offscreenCanvas = document.createElement('canvas');
+    // offscreenCanvas.width = 1920;
+    // offscreenCanvas.height = 1080;
+    // const offscreenContext = offscreenCanvas.getContext('2d');
+    // renderer.render(scene, camera.current);
+    // offscreenContext?.drawImage(renderer.domElement, 0, 0, 1920, 1080);
+    // offscreenCanvas.toBlob((blob) => {
+    //   const url = URL.createObjectURL(blob);
+    //   const a = document.createElement('a');
+    //   a.href = url;
+    //   a.download = 'dawdasd.png';
+    //   a.click();
+    //   URL.revokeObjectURL(url);
+    // });
 
-    renderer.render(scene, camera.current)
-    context?.drawImage(renderCanvas, 0, 0, canvas.width, canvas.height)
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
 
-    const data = canvas.toDataURL('image/png')
-    const a = document.createElement('a')
-    a.href = data
-    a.download = 'drawing.png'
-    a.click()
+    const scale = 400;
+    const howtall = 1.2;
+
+    // const maxYPoint = Math.max(...strokes.map((stroke) => Math.max(...stroke.map((point) => point.y))))
+    // const minYPoint = Math.min(...strokes.map((stroke) => Math.min(...stroke.map((point) => point.y))))
+    // const maxXPoint = Math.max(...strokes.map((stroke) => Math.max(...stroke.map((point) => point.x))))
+    // const minXPoint = Math.min(...strokes.map((stroke) => Math.min(...stroke.map((point) => point.x))))
+
+    // const normalize = (point: THREE.Vector3) => {
+    //   const x = (point.x - minXPoint) / (maxXPoint - minXPoint);
+    //   const y = (point.y - minYPoint) / (maxYPoint - minYPoint);
+    //   return new THREE.Vector3(x, y, point.z);
+    // };
+
+    // const normalizedStrokes = strokes.map((stroke) => stroke.map(normalize));
+
+    if (!context) return;
+
+    strokes.forEach((stroke) => {
+      if (stroke.length < 2) return;
+
+      context.beginPath();
+
+      let firstPoint = stroke[0];
+      console.log(firstPoint);
+      let mappedX = firstPoint.x * scale + canvas.width / 2;
+      let mappedY = ((1 - firstPoint.y) * scale) + canvas.height / 2;
+
+      context.moveTo(mappedX, mappedY);
+
+      stroke.forEach((vec3) => {
+        let x = vec3.x * scale + canvas.width / 2;
+        let y = ((1 - vec3.y) * scale) + canvas.height / 2;
+        context.lineTo(x, y);
+      });
+
+      context.strokeStyle = 'white'; // Set stroke color
+      context.lineWidth = 2; // Set line width
+      context.stroke(); // Draw the path
+    });
+
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'drawing.png';
+    a.click();
+
   }
 
   const handleSqueezeEnd = (event: XRControllerEvent) => {
