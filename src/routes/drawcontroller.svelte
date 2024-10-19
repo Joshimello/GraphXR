@@ -9,6 +9,7 @@
   import { ComputeEngine } from "@cortex-js/compute-engine";
 
 
+
   let isDrawing = false
   let points: THREE.Vector3[] = []
   let meshes: THREE.Mesh[] = []
@@ -54,28 +55,44 @@
     renderTarget = new THREE.WebGLRenderTarget(size.width, size.height)
   })
 
-  async function sendData(data:any) {
-      console.log("Sending Data ...")
-      const url = "https://192.168.0.138:5000/receive-data"; // Flask server endpoint
-      try {
-        const response = await fetch(url, {
-          method: "POST", // Use the POST method to send data
-          headers: {
-            "Content-Type": "application/json" // Specify the content type as JSON
-          },
-          body: JSON.stringify({image:data}) // Send the data as a JSON string
-        });
-
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        const json = await response.json(); // Parse the JSON response from the server
-        console.log("Response from server:", json);
-      } catch (error) {
-        console.error("Error:", error);
-      }
+  async function urlToBlob(url:any) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error('Network response was not ok');
     }
+    return await response.blob();
+  }
+
+  async function sendData(dataUrl:any) {
+    console.log("Sending Data ...")
+    const url = "http://192.168.0.147:5001/receive-data"; // Flask server endpoint
+    try {
+      const blob = await urlToBlob(dataUrl);
+      console.log("blocblob", blob)
+      console.log("stringify", JSON.stringify({image:blob}))
+      const formData = new FormData();
+      formData.append('image', blob, 'image.jpg');
+      console.log("form data", formData)
+      const response = await fetch(url, {
+        method: "POST", // Use the POST method to send data
+        // headers: {
+        //   "Content-Type": "application/json" // Specify the content type as JSON
+        // },
+        // body: JSON.stringify({image:blob}) // Send the data as a JSON string
+        body: formData // Send the data as a JSON string
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+
+      const json = await response.json(); // Parse the JSON response from the server
+      console.log("Response from server:", json);
+    } catch (error) {
+      console.error("Error:", error);
+      // alert(error);
+    }
+  }
 
   const handleSqueezeStart = (event: XRControllerEvent) => {
     // const offscreenCanvas = document.createElement('canvas');
