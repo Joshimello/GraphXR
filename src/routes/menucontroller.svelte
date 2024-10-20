@@ -25,19 +25,5 @@
 
   <T.Group slot="target-ray" position={[0.1, 0, 0]}>
 
-    {#each menuButtons as button, idx}
-      <T.Mesh
-        bind:ref={buttonRefs[idx]}
-        position={[0.06 * idx, 0, 0]} 
-        on:click={() => {
-          text.set(button)
-        }}
-        >
-        
-        <T.BoxGeometry args={[0.05, 0.05, 0.05]} />
-        <T.MeshStandardMaterial color={0xeeeeee} />
-      </T.Mesh>
-    {/each}
-
   </T.Group>
 </Controller>

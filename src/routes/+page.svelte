@@ -14,5 +14,5 @@
       <Scene />
     </World>
   </Canvas>
-  <ARButton />
+  <VRButton />
 </div>
