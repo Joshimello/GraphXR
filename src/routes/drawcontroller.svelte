@@ -6,6 +6,8 @@
   import { text } from './stores'
   import { MeshLineGeometry, MeshLineMaterial, raycast } from 'meshline'
 	import { onMount } from 'svelte';
+  import { OpenAI } from 'openai';
+	import { PUBLIC_OPENAI } from '$env/static/public';
 
   let isDrawing = false
   let points: THREE.Vector3[] = []
@@ -53,74 +55,96 @@
   })
 
   const handleSqueezeStart = (event: XRControllerEvent) => {
-    // const offscreenCanvas = document.createElement('canvas');
-    // offscreenCanvas.width = 1920;
-    // offscreenCanvas.height = 1080;
-    // const offscreenContext = offscreenCanvas.getContext('2d');
-    // renderer.render(scene, camera.current);
-    // offscreenContext?.drawImage(renderer.domElement, 0, 0, 1920, 1080);
-    // offscreenCanvas.toBlob((blob) => {
-    //   const url = URL.createObjectURL(blob);
-    //   const a = document.createElement('a');
-    //   a.href = url;
-    //   a.download = 'dawdasd.png';
-    //   a.click();
-    //   URL.revokeObjectURL(url);
-    // });
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = 800;
+  canvas.height = 600;
 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 800;
-    canvas.height = 600;
+  const scale = 400;
 
-    const scale = 400;
-    const howtall = 1.2;
+  if (!context) return;
 
-    // const maxYPoint = Math.max(...strokes.map((stroke) => Math.max(...stroke.map((point) => point.y))))
-    // const minYPoint = Math.min(...strokes.map((stroke) => Math.min(...stroke.map((point) => point.y))))
-    // const maxXPoint = Math.max(...strokes.map((stroke) => Math.max(...stroke.map((point) => point.x))))
-    // const minXPoint = Math.min(...strokes.map((stroke) => Math.min(...stroke.map((point) => point.x))))
+  // Initialize bounding box values
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
-    // const normalize = (point: THREE.Vector3) => {
-    //   const x = (point.x - minXPoint) / (maxXPoint - minXPoint);
-    //   const y = (point.y - minYPoint) / (maxYPoint - minYPoint);
-    //   return new THREE.Vector3(x, y, point.z);
-    // };
+  // First, find the bounding box of all the strokes
+  strokes.forEach((stroke) => {
+    stroke.forEach((vec3) => {
+      minX = Math.min(minX, vec3.x);
+      maxX = Math.max(maxX, vec3.x);
+      minY = Math.min(minY, vec3.y);
+      maxY = Math.max(maxY, vec3.y);
+    });
+  });
 
-    // const normalizedStrokes = strokes.map((stroke) => stroke.map(normalize));
+  // Calculate the center of the bounding box
+  const bboxWidth = maxX - minX;
+  const bboxHeight = maxY - minY;
+  const bboxCenterX = minX + bboxWidth / 2;
+  const bboxCenterY = minY + bboxHeight / 2;
 
-    if (!context) return;
+  // Translate points so that the center of the bounding box is in the middle of the canvas
+  const canvasCenterX = canvas.width / 2;
+  const canvasCenterY = canvas.height / 2;
 
-    strokes.forEach((stroke) => {
-      if (stroke.length < 2) return;
+  strokes.forEach((stroke) => {
+    if (stroke.length < 2) return;
 
-      context.beginPath();
+    context.beginPath();
 
-      let firstPoint = stroke[0];
-      console.log(firstPoint);
-      let mappedX = firstPoint.x * scale + canvas.width / 2;
-      let mappedY = ((1 - firstPoint.y) * scale) + canvas.height / 2;
+    // Get the first point and map its position
+    let firstPoint = stroke[0];
+    let mappedX = (firstPoint.x - bboxCenterX) * scale + canvasCenterX;
+    let mappedY = (1 - (firstPoint.y)) * scale + canvasCenterY;
 
-      context.moveTo(mappedX, mappedY);
+    context.moveTo(mappedX, mappedY);
 
-      stroke.forEach((vec3) => {
-        let x = vec3.x * scale + canvas.width / 2;
-        let y = ((1 - vec3.y) * scale) + canvas.height / 2;
-        context.lineTo(x, y);
-      });
-
-      context.strokeStyle = 'white'; // Set stroke color
-      context.lineWidth = 2; // Set line width
-      context.stroke(); // Draw the path
+    stroke.forEach((vec3) => {
+      let x = (vec3.x - bboxCenterX) * scale + canvasCenterX;
+      let y = (1 - (vec3.y)) * scale + canvasCenterY;
+      context.lineTo(x, y);
     });
 
-    const url = canvas.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'drawing.png';
-    a.click();
+    context.strokeStyle = 'white'; // Set stroke color
+    context.lineWidth = 2; // Set line width
+    context.stroke(); // Draw the path
+  });
 
-  }
+  // Generate a downloadable image
+  // const url = canvas.toDataURL('image/png');
+  // const a = document.createElement('a');
+  // a.href = url;
+  // a.download = 'test.png';
+  // a.click();
+
+  const openai = new OpenAI({
+    apiKey: PUBLIC_OPENAI,
+    dangerouslyAllowBrowser: true
+  });
+  
+  // convert image to base64
+  const data = canvas.toDataURL('image/png');
+  const base64Image = data.split(';base64,').pop();
+
+  (async () => {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'parse the formula to a latex formula, for example, if i wrote "sin(x+y)", please output "\\sin(x+y)", without any other additional text, ONLY the formula. ' },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
+          ]
+        }
+      ]
+    })
+
+    text.set(response.choices[0].message.content ?? 'No response')
+  })()
+
+};
+
 
   const handleSqueezeEnd = (event: XRControllerEvent) => {
 
